@@ -46,3 +46,18 @@ def get_products_by_category(
         (category.strip(),),
     ).fetchall()
     return [Product.from_row(row) for row in rows]
+
+
+def get_products_by_ids(
+    db: sqlite3.Connection, product_ids: list[str]
+) -> list[Product]:
+    """Return products for a set of IDs; callers may restore their own order."""
+    if not product_ids:
+        return []
+
+    placeholders = ", ".join("?" for _ in product_ids)
+    rows = db.execute(
+        f"SELECT * FROM products WHERE product_id IN ({placeholders})",
+        product_ids,
+    ).fetchall()
+    return [Product.from_row(row) for row in rows]

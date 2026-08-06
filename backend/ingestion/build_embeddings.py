@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sqlite3
+from functools import lru_cache
 from pathlib import Path
 from typing import Protocol, Sequence
 
@@ -64,6 +65,38 @@ def _load_model(model_name: str) -> EmbeddingModel:
     return SentenceTransformer(model_name)
 
 
+@lru_cache
+def get_embedding_model(model_name: str = DEFAULT_MODEL_NAME) -> EmbeddingModel:
+    """Return a cached Sentence Transformers model for batch or query encoding."""
+    return _load_model(model_name)
+
+
+def embed_query(
+    query: str,
+    model_name: str = DEFAULT_MODEL_NAME,
+    model: EmbeddingModel | None = None,
+) -> np.ndarray:
+    """Encode one user query with the same normalized embedding model."""
+    normalized_query = query.strip()
+    if not normalized_query:
+        raise ValueError("query cannot be empty")
+
+    encoder = model or get_embedding_model(model_name)
+    embedding = np.asarray(
+        encoder.encode(
+            [normalized_query],
+            batch_size=1,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        ),
+        dtype=np.float32,
+    )
+    if embedding.ndim != 2 or embedding.shape[0] != 1:
+        raise ValueError("The embedding model returned an invalid query embedding.")
+    return embedding[0]
+
+
 def _fetch_embedding_inputs(database_path: str | Path) -> tuple[list[str], list[str]]:
     """Read stable product IDs and their corresponding embedding text."""
     with session_scope(database_path) as connection:
@@ -92,7 +125,7 @@ def generate_embeddings(
         raise ValueError("batch_size must be at least 1")
 
     product_ids, product_texts = _fetch_embedding_inputs(database_path)
-    encoder = model or _load_model(model_name)
+    encoder = model or get_embedding_model(model_name)
     embeddings = np.asarray(
         encoder.encode(
             product_texts,
