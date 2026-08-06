@@ -1,0 +1,1 @@
+"""Embedding build placeholder."""
