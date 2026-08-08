@@ -15,6 +15,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from backend.app.core.logging import get_request_id
+from backend.app.core.middleware import REQUEST_ID_HEADER
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -26,10 +29,17 @@ _CODES_BY_STATUS = {
 
 
 def _error_response(status_code: int, code: str, message: str) -> JSONResponse:
-    return JSONResponse(
+    response = JSONResponse(
         status_code=status_code,
         content={"error": {"code": code, "message": message}},
     )
+    # A 500 is built and sent by ServerErrorMiddleware, which sits outside
+    # RequestIDMiddleware and never sees its normal response path -- attach
+    # the header here too so every response carries it, not just 2xx/4xx.
+    request_id = get_request_id()
+    if request_id:
+        response.headers[REQUEST_ID_HEADER] = request_id
+    return response
 
 
 async def _handle_http_exception(

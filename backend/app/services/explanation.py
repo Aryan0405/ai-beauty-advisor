@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 
 from pydantic import BaseModel
@@ -114,6 +115,7 @@ def generate_explanations(
     if not valid_product_ids:
         return {}
 
+    model_name: str | None = None
     try:
         api_key, model_name, timeout_seconds = _load_gemini_settings()
         if not api_key.strip():
@@ -126,10 +128,20 @@ def generate_explanations(
             api_key=api_key,
             http_options=types.HttpOptions(timeout=timeout_seconds * 1000),
         )
+        prompt = _build_user_prompt(user_query, recommended_products)
+        LOGGER.info(
+            "llm_call_started",
+            extra={"llm_model": model_name, "product_count": len(recommended_products)},
+        )
+        # Prompts are verbose and may contain the raw user query -- DEBUG
+        # only, disabled by default (spec section 16).
+        LOGGER.debug("llm_prompt", extra={"llm_model": model_name, "prompt": prompt})
+
+        call_start = time.perf_counter()
         try:
             response = client.models.generate_content(
                 model=model_name,
-                contents=_build_user_prompt(user_query, recommended_products),
+                contents=prompt,
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
                     temperature=0.2,
@@ -140,14 +152,29 @@ def generate_explanations(
             )
         finally:
             client.close()
+        call_duration_ms = round((time.perf_counter() - call_start) * 1000, 2)
 
+        LOGGER.debug("llm_response", extra={"llm_model": model_name, "response_text": response.text})
         batch = _parse_batch(response)
     except Exception as error:
-        LOGGER.warning("Gemini explanation generation failed: %s", type(error).__name__)
+        LOGGER.warning(
+            "llm_call_failed: %s",
+            type(error).__name__,
+            extra={"llm_model": model_name},
+        )
         return {}
 
-    return {
+    explanations = {
         item.product_id: item.explanation.strip()
         for item in batch.explanations
         if item.product_id in valid_product_ids and item.explanation.strip()
     }
+    LOGGER.info(
+        "llm_call_finished",
+        extra={
+            "llm_model": model_name,
+            "call_duration_ms": call_duration_ms,
+            "explanation_count": len(explanations),
+        },
+    )
+    return explanations

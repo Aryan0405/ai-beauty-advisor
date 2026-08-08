@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import re
+import time
 from dataclasses import dataclass
 from typing import Mapping
 
@@ -13,6 +15,7 @@ from backend.app.vectorstore.faiss_index import search_index
 from backend.ingestion.build_embeddings import embed_query
 
 
+LOGGER = logging.getLogger(__name__)
 CANDIDATE_COUNT = 50
 SIMILARITY_WEIGHT = 0.9
 KEYWORD_WEIGHT = 0.075
@@ -92,8 +95,14 @@ def get_recommendations(
         raise ValueError("Filter values must be strings.")
 
     candidate_count = max(CANDIDATE_COUNT, top_k * 10)
+    retrieval_start = time.perf_counter()
     query_embedding = embed_query(query)
     candidates = search_index(query_embedding, candidate_count)
+    retrieval_latency_ms = round((time.perf_counter() - retrieval_start) * 1000, 2)
+    LOGGER.info(
+        "retrieval_completed",
+        extra={"retrieval_latency_ms": retrieval_latency_ms, "faiss_result_count": len(candidates)},
+    )
     if not candidates:
         return []
 
