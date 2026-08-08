@@ -6,8 +6,6 @@ import json
 import logging
 import uuid
 
-import pytest
-
 from backend.app.core.logging import _JSONFormatter, get_request_id, reset_request_id, set_request_id
 from backend.app.core.middleware import REQUEST_ID_HEADER
 
@@ -39,9 +37,9 @@ def test_each_request_gets_a_distinct_request_id(client):
 def test_request_id_header_present_on_structured_error_responses(
     client, monkeypatch, fixture_session_scope
 ):
-    from backend.app.api.v1.endpoints import products as products_module
+    from backend.app.services import product_service
 
-    monkeypatch.setattr(products_module, "session_scope", fixture_session_scope)
+    monkeypatch.setattr(product_service, "session_scope", fixture_session_scope)
 
     response = client.get("/api/v1/products/does-not-exist")
 
@@ -52,13 +50,13 @@ def test_request_id_header_present_on_structured_error_responses(
 def test_request_id_header_present_on_500_response(monkeypatch):
     from fastapi.testclient import TestClient
 
-    from backend.app.api.v1.endpoints import products as products_module
+    from backend.app.api.v1.endpoints import products as products_endpoint_module
     from backend.app.main import app
 
-    def _explode(db, product_id):
+    def _explode(product_id):
         raise KeyError("boom")
 
-    monkeypatch.setattr(products_module, "get_product_by_id", _explode)
+    monkeypatch.setattr(products_endpoint_module, "get_product", _explode)
 
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get("/api/v1/products/cosmetics-000001")

@@ -136,7 +136,10 @@ def test_search_index_rejects_wrong_dimension_query(tmp_path):
     mapping_path = tmp_path / "index" / "product_ids.json"
     build_index(embeddings_path, ids_path, index_path, mapping_path)
 
-    with pytest.raises(ValueError):
+    # A dimension mismatch means the deployment is misconfigured (embedding
+    # model doesn't match the index), not that the caller sent bad input --
+    # RuntimeError, not ValueError, so the API layer maps it to 503.
+    with pytest.raises(RuntimeError):
         search_index(
             np.array([1.0, 0.0, 0.0], dtype=np.float32),
             top_k=1,
@@ -158,7 +161,10 @@ def test_search_index_detects_out_of_sync_mapping(tmp_path):
     payload["product_ids"] = ["a"]
     mapping_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(ValueError):
+    # An out-of-sync index/mapping is a broken deployment, not a bad
+    # request -- RuntimeError, not ValueError, so the API layer maps it to
+    # 503 (spec section 15: "corrupt index" -> 503).
+    with pytest.raises(RuntimeError):
         search_index(
             np.array([1.0, 0.0], dtype=np.float32),
             top_k=1,

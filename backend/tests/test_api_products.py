@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from backend.app.api.v1.endpoints import products as products_module
+from backend.app.services import product_service
 
 
 def _wire_products_db(monkeypatch, fixture_session_scope):
-    monkeypatch.setattr(products_module, "session_scope", fixture_session_scope)
+    monkeypatch.setattr(product_service, "session_scope", fixture_session_scope)
 
 
 def test_get_product_returns_full_metadata(client, monkeypatch, fixture_session_scope):

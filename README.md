@@ -84,7 +84,7 @@ Offline, run once (or whenever the source CSV changes):
   to every log line for that request.
 - **Dockerized** — non-root backend and frontend containers, healthchecked,
   orchestrated by a single `docker-compose.yml`.
-- **74+ automated tests**, all offline (FAISS/DB/Gemini mocked or run
+- **94 automated tests**, all offline (FAISS/DB/Gemini mocked or run
   against small real fixtures) — see [Testing](#testing).
 
 ## Quickstart
@@ -112,7 +112,7 @@ frontend starts, and `data/` is bind-mounted in (see [Data](#data) below).
 
 ```bash
 # Backend
-pip install -r backend/requirements.txt
+pip install -r backend/requirements-dev.txt   # prod deps + pytest/httpx for testing
 cp .env.example .env   # set a real GEMINI_API_KEY
 uvicorn backend.app.main:app --reload --port 8000
 
@@ -121,6 +121,10 @@ cd frontend
 npm install
 npm run dev
 ```
+
+`backend/requirements.txt` alone is enough to just run the app; use
+`backend/requirements-dev.txt` (which includes it) if you also want to run
+`pytest`.
 
 ### Data
 
@@ -191,7 +195,7 @@ doesn't exist.
 ## Testing
 
 ```bash
-pytest              # 93 tests, offline, ~2s -- see backend/tests/
+pytest              # 94 tests, offline, ~2s -- see backend/tests/
 ```
 
 No network calls, no live model downloads, no real Gemini calls: FAISS/DB
@@ -239,7 +243,10 @@ breakdown is printed by the script and written to
 backend/
   app/
     api/v1/endpoints/   health.py, recommendations.py, products.py
-    services/           recommendation.py (ranking), explanation.py (Gemini)
+                        (thin routers -- delegate to services/, no direct
+                        db/vectorstore imports)
+    services/           recommendation.py (ranking), explanation.py (Gemini),
+                         product_service.py, health_service.py
     db/                 session.py, repository.py, ingest.py
     vectorstore/        faiss_index.py (build/search/persist)
     core/               config.py (env vars), logging.py, middleware.py,
@@ -247,6 +254,8 @@ backend/
     main.py
   ingestion/            build_embeddings.py, build_index.py (offline pipeline)
   tests/                pytest suite + tests/eval/ (manual/QA scripts)
+  requirements.txt      production deps
+  requirements-dev.txt  + pytest/httpx, for running the test suite
   Dockerfile
 frontend/
   src/App.jsx           the whole SPA (search form, results, explanations)

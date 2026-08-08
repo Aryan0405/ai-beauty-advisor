@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.app.api.v1.endpoints import health as health_module
+from backend.app.services import health_service
 
 
 def test_health_check_reports_ok_against_real_fixtures(client):
@@ -20,7 +20,7 @@ def test_health_check_reports_db_connected_false_when_db_unavailable(client, mon
     def _broken_session_scope(*_args, **_kwargs):
         raise RuntimeError("database unavailable")
 
-    monkeypatch.setattr(health_module, "session_scope", _broken_session_scope)
+    monkeypatch.setattr(health_service, "session_scope", _broken_session_scope)
 
     response = client.get("/api/v1/health")
 
@@ -31,7 +31,7 @@ def test_health_check_reports_db_connected_false_when_db_unavailable(client, mon
 
 
 def test_health_check_reports_index_loaded_false_when_index_missing(client, monkeypatch):
-    monkeypatch.setattr(health_module, "_index_loaded", lambda: False)
+    monkeypatch.setattr(health_service, "index_loaded", lambda: False)
 
     response = client.get("/api/v1/health")
 

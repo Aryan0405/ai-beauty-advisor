@@ -1,0 +1,5 @@
+# Extra dependencies needed to run the test suite (pytest, FastAPI's
+# TestClient) on top of the production dependencies in requirements.txt.
+-r requirements.txt
+pytest
+httpx

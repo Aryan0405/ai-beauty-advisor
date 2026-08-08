@@ -12,8 +12,8 @@ from functools import partial
 
 from fastapi.testclient import TestClient
 
-from backend.app.api.v1.endpoints import products as products_module
 from backend.app.api.v1.endpoints import recommendations as recommendations_endpoint_module
+from backend.app.services import product_service
 from backend.app.services import recommendation as recommendation_module
 from backend.app.vectorstore.faiss_index import search_index as real_search_index
 
@@ -82,7 +82,7 @@ def test_service_value_error_returns_400_structured(client):
 def test_product_not_found_returns_404_structured(
     client, monkeypatch, fixture_session_scope
 ):
-    monkeypatch.setattr(products_module, "session_scope", fixture_session_scope)
+    monkeypatch.setattr(product_service, "session_scope", fixture_session_scope)
 
     response = client.get("/api/v1/products/no-such-id")
 
@@ -99,6 +99,43 @@ def test_retrieval_unavailable_returns_503_structured(client, monkeypatch):
     monkeypatch.setattr(recommendation_module, "search_index", _broken_search_index)
 
     response = client.post("/api/v1/recommend", json={"query": "hydrating serum"})
+
+    assert response.status_code == 503
+    _assert_error_shape(response.json(), "service_unavailable")
+
+
+def test_real_out_of_sync_index_returns_503_not_400(
+    client, monkeypatch, fixture_session_scope, test_index_paths
+):
+    """A genuinely corrupt FAISS/mapping pair must map to 503, not 400.
+
+    Exercises the real search_index() (not a stub) against a real, tiny,
+    intentionally-corrupted index/mapping pair -- this is what actually
+    changed when faiss_index.py's out-of-sync check was switched from
+    ValueError to RuntimeError, not just a unit-level assertion about which
+    exception type gets raised.
+    """
+    import json
+
+    payload = json.loads(test_index_paths.id_mapping_path.read_text(encoding="utf-8"))
+    payload["product_ids"] = payload["product_ids"][:1]
+    test_index_paths.id_mapping_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    monkeypatch.setattr(
+        recommendation_module, "embed_query", lambda query: test_index_paths.embeddings[0]
+    )
+    monkeypatch.setattr(
+        recommendation_module,
+        "search_index",
+        partial(
+            real_search_index,
+            index_path=test_index_paths.index_path,
+            id_mapping_path=test_index_paths.id_mapping_path,
+        ),
+    )
+    monkeypatch.setattr(recommendation_module, "session_scope", fixture_session_scope)
+
+    response = client.post("/api/v1/recommend", json={"query": "gentle cleanser"})
 
     assert response.status_code == 503
     _assert_error_shape(response.json(), "service_unavailable")
@@ -130,10 +167,12 @@ def test_unhandled_exception_returns_500_structured_without_leaking_details(monk
 
 
 def test_unhandled_exception_in_products_endpoint_returns_500_structured(monkeypatch):
-    def _explode(db, product_id):
+    def _explode(product_id):
         raise KeyError("unexpected repository failure")
 
-    monkeypatch.setattr(products_module, "get_product_by_id", _explode)
+    from backend.app.api.v1.endpoints import products as products_endpoint_module
+
+    monkeypatch.setattr(products_endpoint_module, "get_product", _explode)
 
     from backend.app.main import app
 

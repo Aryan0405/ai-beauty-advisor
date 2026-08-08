@@ -41,7 +41,10 @@ def _load_product_ids(mapping_path: str | Path) -> list[str]:
     if not isinstance(product_ids, list) or not all(
         isinstance(product_id, str) for product_id in product_ids
     ):
-        raise ValueError("Invalid FAISS product-ID mapping file.")
+        # A malformed mapping file is a corrupt/misconfigured deployment, not
+        # something any caller's input could produce -- RuntimeError so the
+        # API layer maps it to 503, not 400 (spec section 15: "corrupt index").
+        raise RuntimeError("Invalid FAISS product-ID mapping file.")
     return product_ids
 
 
@@ -99,13 +102,20 @@ def search_index(
     index = faiss.read_index(str(index_path))
     product_ids = _load_product_ids(id_mapping_path)
     if index.ntotal != len(product_ids):
-        raise ValueError("FAISS index and product-ID mapping are out of sync.")
+        # Same reasoning as above: an out-of-sync index is a broken deployment
+        # (the ingestion pipeline is supposed to rebuild both atomically), not
+        # a bad request -- RuntimeError maps to 503, not 400.
+        raise RuntimeError("FAISS index and product-ID mapping are out of sync.")
 
     query = np.asarray(query_embedding, dtype=np.float32)
     if query.ndim == 1:
         query = query.reshape(1, -1)
     if query.ndim != 2 or query.shape != (1, index.d):
-        raise ValueError(f"Expected one query embedding with dimension {index.d}.")
+        # A dimension mismatch means the embedding model in use doesn't match
+        # the one the index was built with -- a server misconfiguration no
+        # query text could ever cause, so this is a RuntimeError (-> 503)
+        # too, not a ValueError (-> 400).
+        raise RuntimeError(f"Expected one query embedding with dimension {index.d}.")
 
     scores, vector_ids = index.search(_normalize(query), min(top_k, index.ntotal))
     return [
