@@ -29,7 +29,9 @@ def test_get_product_returns_404_for_unknown_id(client, monkeypatch, fixture_ses
     response = client.get("/api/v1/products/does-not-exist")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Product not found."
+    body = response.json()
+    assert body["error"]["code"] == "not_found"
+    assert body["error"]["message"] == "Product not found."
 
 
 def test_get_product_preserves_null_price(client, monkeypatch, fixture_session_scope):

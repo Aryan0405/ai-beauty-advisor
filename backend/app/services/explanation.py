@@ -74,12 +74,16 @@ def _build_user_prompt(user_query: str, recommended_products: list[dict[str, Any
     )
 
 
-def _load_gemini_settings() -> tuple[str, str]:
-    """Read the Gemini key and model from the central settings module."""
+def _load_gemini_settings() -> tuple[str, str, int]:
+    """Read the Gemini key, model, and call timeout from central settings."""
     from backend.app.core.config import get_settings
 
     settings = get_settings()
-    return settings.gemini_api_key.get_secret_value(), settings.gemini_model
+    return (
+        settings.gemini_api_key.get_secret_value(),
+        settings.gemini_model,
+        settings.llm_timeout_seconds,
+    )
 
 
 def _parse_batch(response: Any) -> ExplanationBatch:
@@ -111,14 +115,17 @@ def generate_explanations(
         return {}
 
     try:
-        api_key, model_name = _load_gemini_settings()
+        api_key, model_name, timeout_seconds = _load_gemini_settings()
         if not api_key.strip():
             return {}
 
         from google import genai
         from google.genai import types
 
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=timeout_seconds * 1000),
+        )
         try:
             response = client.models.generate_content(
                 model=model_name,

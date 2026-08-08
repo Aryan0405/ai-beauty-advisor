@@ -114,19 +114,27 @@ def test_recommend_applies_category_filter(
     assert body["recommendations"][0]["product_id"] == "cosmetics-000004"
 
 
-def test_recommend_rejects_empty_query_with_422(client):
+def test_recommend_rejects_empty_query_with_400(client):
     response = client.post("/api/v1/recommend", json={"query": ""})
-    assert response.status_code == 422
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "invalid_request"
+    assert "query" in body["error"]["message"]
 
 
 def test_recommend_rejects_whitespace_only_query_with_400(client):
     response = client.post("/api/v1/recommend", json={"query": "   "})
     assert response.status_code == 400
+    body = response.json()
+    assert body["error"]["code"] == "invalid_request"
+    assert body["error"]["message"] == "query cannot be empty"
 
 
 def test_recommend_rejects_top_k_out_of_bounds(client):
-    assert client.post("/api/v1/recommend", json={"query": "serum", "top_k": 0}).status_code == 422
-    assert client.post("/api/v1/recommend", json={"query": "serum", "top_k": 21}).status_code == 422
+    for bad_top_k in (0, 21):
+        response = client.post("/api/v1/recommend", json={"query": "serum", "top_k": bad_top_k})
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "invalid_request"
 
 
 def test_recommend_returns_503_when_retrieval_subsystem_fails(client, monkeypatch):
@@ -152,7 +160,7 @@ def test_recommend_degrades_gracefully_when_gemini_fails(
     import google.genai as genai_module
 
     class _FailingClient:
-        def __init__(self, api_key):
+        def __init__(self, api_key, **kwargs):
             pass
 
         @property
@@ -201,7 +209,7 @@ def test_recommend_nulls_out_products_missing_from_a_partial_gemini_batch(
             return _FakeResponse(contents)
 
     class _FakeClient:
-        def __init__(self, api_key):
+        def __init__(self, api_key, **kwargs):
             self.models = _FakeModels()
 
         def close(self):

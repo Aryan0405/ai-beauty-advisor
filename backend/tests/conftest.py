@@ -209,7 +209,7 @@ def mock_gemini(monkeypatch):
             return _FakeResponse(contents)
 
     class _FakeClient:
-        def __init__(self, api_key):
+        def __init__(self, api_key, **kwargs):
             self.models = _FakeModels()
 
         def close(self):

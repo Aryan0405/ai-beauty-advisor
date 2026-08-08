@@ -195,7 +195,7 @@ Dependency direction is strictly one-way: `api → services → (db | vectorstor
 
 Base path: `/api/v1`
 
-### `POST /search`
+### `POST /recommend`
 **Request:**
 ```json
 {
@@ -207,25 +207,51 @@ Base path: `/api/v1`
   }
 }
 ```
+`filters` is optional and accepts `category`, `brand`, and `skin_type` (each an exact, case-insensitive match; `skin_type` may be a comma-separated list, all of which must be present on the product). `top_k` is optional, defaults to 5, and must be between 1 and 20.
+
 **Response (200):**
 ```json
 {
-  "results": [
+  "query": "lightweight moisturizer for oily acne-prone skin",
+  "count": 1,
+  "recommendations": [
     {
       "product_id": "string",
       "name": "string",
       "brand": "string",
       "category": "string",
+      "skin_type": "string",
+      "ingredients": "string",
+      "description": "string",
       "price": 24.99,
-      "score": 0.87,
+      "source_rank": 4.5,
+      "similarity_score": 0.87,
+      "match_score": 0.83,
       "explanation": "string | null"
     }
-  ],
-  "query": "string",
-  "count": 5
+  ]
 }
 ```
-**Errors:** `400` invalid input; `503` retrieval subsystem unavailable; `500` unhandled.
+`similarity_score` is the raw FAISS cosine-similarity score; `match_score` is the hybrid score (similarity + keyword + filter match) that results are ranked and truncated by. `explanation` is `null` when the batched Gemini call fails, times out, or omits that product from its response — the rest of the response still succeeds (section 15).
+
+**Errors:** all non-2xx responses use the structured envelope from section 15: `{ "error": { "code": "string", "message": "string" } }`. `400 invalid_request` (empty query, out-of-range `top_k`, or a query that is empty after trimming whitespace); `503 service_unavailable` (retrieval subsystem unavailable); `500 internal_error` (unhandled).
+
+### `GET /products/{product_id}`
+**Response (200):**
+```json
+{
+  "product_id": "string",
+  "name": "string",
+  "brand": "string",
+  "category": "string",
+  "skin_type": "string",
+  "ingredients": "string",
+  "description": "string",
+  "price": 24.99,
+  "source_rank": 4.5
+}
+```
+**Errors:** `404 not_found` if no product matches `product_id`; `500 internal_error` unhandled. Same structured envelope as above.
 
 ### `GET /health`
 Returns `{ "status": "ok", "index_loaded": true, "db_connected": true }`.
@@ -303,7 +329,7 @@ All secrets provided via `.env`, never committed. `.env.example` checked in with
 - CORS restricted to explicitly configured frontend origin(s); wildcard not used in production config.
 - Input length limits enforced on `query` field to prevent prompt-injection-via-length or excessive token cost.
 - Basic prompt-injection mitigation: LLM prompt template treats product metadata and user query as clearly delimited, untrusted data blocks; system instructs the model to only describe the given product, not follow embedded instructions in the query text.
-- Rate limiting on `/search` (e.g., per-IP token bucket) recommended at reverse-proxy or middleware level to control LLM cost exposure.
+- Rate limiting on `/recommend` (e.g., per-IP token bucket) recommended at reverse-proxy or middleware level to control LLM cost exposure.
 - No authentication in v1 scope (explicitly out of scope) — this is a demo-grade constraint and should be called out clearly if ever deployed publicly.
 - Docker images run as non-root user; no secrets baked into images.
 
@@ -333,7 +359,7 @@ CI gate: unit + integration tests must pass; live LLM/network calls excluded fro
 1. **M1 — Data pipeline foundation:** Acquire dataset, build preprocessing + cleaning script, load into SQLite.
 2. **M2 — Embedding & index build:** Generate embeddings, build FAISS index, persist to disk; validate with a manual query script.
 3. **M3 — Backend core:** Implement `db`, `vectorstore`, `services` layers with unit tests; no API yet.
-4. **M4 — API layer:** Implement `/search` and `/health` FastAPI endpoints wired to services; integration tests.
+4. **M4 — API layer:** Implement `/recommend` and `/health` FastAPI endpoints wired to services; integration tests.
 5. **M5 — LLM integration:** Implement Gemini client wrapper, prompt template, per-item failure handling.
 6. **M6 — Frontend:** Build SearchPage + components, wire to API, handle loading/empty/error states.
 7. **M7 — Dockerization:** Backend + frontend Dockerfiles, `docker-compose.yml`, `.env.example`, end-to-end local run.
@@ -353,7 +379,7 @@ CI gate: unit + integration tests must pass; live LLM/network calls excluded fro
 
 - [ ] Dataset ingested and cleaned; row counts documented.
 - [ ] FAISS index built and persisted; SQLite/FAISS IDs verified in sync.
-- [ ] `/search` and `/health` endpoints implemented and tested.
+- [ ] `/recommend` and `/health` endpoints implemented and tested.
 - [ ] LLM explanation generation working with graceful degradation on failure.
 - [ ] Frontend implements search, results, loading/empty/error states.
 - [ ] All environment variables documented in `.env.example`.

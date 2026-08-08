@@ -79,7 +79,7 @@ function App() {
       })
       setResult(response.data)
     } catch (requestError) {
-      const message = requestError.response?.data?.detail
+      const message = requestError.response?.data?.error?.message
       setError(
         typeof message === 'string'
           ? message

@@ -38,13 +38,15 @@ SAMPLE_PRODUCTS = [
 ]
 
 
-def _install_fake_client(monkeypatch, generate_content):
+def _install_fake_client(monkeypatch, generate_content, client_calls=None):
     class _FakeModels:
         def generate_content(self, *, model, contents, config):
             return generate_content(model=model, contents=contents, config=config)
 
     class _FakeClient:
-        def __init__(self, api_key):
+        def __init__(self, api_key, **kwargs):
+            if client_calls is not None:
+                client_calls.append({"api_key": api_key, **kwargs})
             self.models = _FakeModels()
 
         def close(self):
@@ -73,9 +75,30 @@ def test_empty_products_returns_empty_mapping():
 
 def test_missing_api_key_returns_empty_mapping(monkeypatch):
     monkeypatch.setattr(
-        explanation_module, "_load_gemini_settings", lambda: ("", "gemini-2.5-flash")
+        explanation_module, "_load_gemini_settings", lambda: ("", "gemini-2.5-flash", 5)
     )
     assert generate_explanations("oily moisturizer", SAMPLE_PRODUCTS) == {}
+
+
+def test_llm_timeout_seconds_setting_is_passed_to_client(monkeypatch):
+    client_calls = []
+
+    monkeypatch.setattr(
+        explanation_module, "_load_gemini_settings", lambda: ("key", "gemini-2.5-flash", 7)
+    )
+    _install_fake_client(
+        monkeypatch,
+        lambda *, model, contents, config: _json_response(
+            [{"product_id": "p1", "explanation": "ok"}]
+        ),
+        client_calls=client_calls,
+    )
+
+    generate_explanations("oily moisturizer", SAMPLE_PRODUCTS[:1])
+
+    assert len(client_calls) == 1
+    http_options = client_calls[0]["http_options"]
+    assert http_options.timeout == 7000
 
 
 def test_successful_generation_returns_one_explanation_per_product(monkeypatch):
@@ -215,9 +238,20 @@ def test_uses_response_parsed_when_sdk_provides_it(monkeypatch):
     assert result == {"p1": "Great for oily skin."}
 
 
-def test_exception_during_generation_returns_empty_mapping(monkeypatch):
+def test_llm_timeout_returns_empty_mapping_not_an_exception(monkeypatch):
+    """A slow Gemini call degrades gracefully instead of failing the request."""
+
     def _generate_content(*, model, contents, config):
         raise TimeoutError("gemini timed out")
+
+    _install_fake_client(monkeypatch, _generate_content)
+
+    assert generate_explanations("oily moisturizer", SAMPLE_PRODUCTS) == {}
+
+
+def test_generic_api_error_during_generation_returns_empty_mapping(monkeypatch):
+    def _generate_content(*, model, contents, config):
+        raise RuntimeError("gemini rate limit exceeded")
 
     _install_fake_client(monkeypatch, _generate_content)
 
@@ -227,7 +261,7 @@ def test_exception_during_generation_returns_empty_mapping(monkeypatch):
 def test_client_construction_failure_returns_empty_mapping(monkeypatch):
     import google.genai as genai_module
 
-    def _raise(api_key):
+    def _raise(api_key, **kwargs):
         raise RuntimeError("client init failed")
 
     monkeypatch.setattr(genai_module, "Client", _raise)
