@@ -169,16 +169,6 @@ function App() {
               <span className="query-pill">“{result.query}”</span>
             </div>
 
-            {result.explanation && (
-              <article className="explanation-card">
-                <div className="sparkle-icon"><Sparkles size={21} /></div>
-                <div>
-                  <span className="section-kicker">Why these are a fit</span>
-                  <p>{result.explanation}</p>
-                </div>
-              </article>
-            )}
-
             {visibleRecommendations.length > 0 ? (
               <div className="product-grid">
                 {visibleRecommendations.map((product) => (
@@ -190,12 +180,23 @@ function App() {
                     <p className="brand">{product.brand}</p>
                     <h3>{product.name}</h3>
                     <p className="ingredients">{product.ingredients}</p>
+                    {product.explanation && (
+                      <p className="product-explanation">
+                        <Sparkles size={14} aria-hidden="true" />
+                        {product.explanation}
+                      </p>
+                    )}
                     <div className="card-footer">
                       <strong>{formatPrice(product.price)}</strong>
                       <span>View details <ChevronRight size={16} /></span>
                     </div>
                   </article>
                 ))}
+              </div>
+            ) : result.recommendations.length === 0 ? (
+              <div className="empty-state">
+                <h3>No products matched that search.</h3>
+                <p>Try a different description, or loosen your category or skin type filters.</p>
               </div>
             ) : (
               <div className="empty-state">

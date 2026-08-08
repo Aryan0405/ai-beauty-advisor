@@ -48,18 +48,20 @@ class RecommendationResponse(ProductResponse):
 
     similarity_score: float
     match_score: float
+    explanation: str | None = None
 
 
 class SearchResponse(BaseModel):
-    """Recommendation results and their optional Gemini explanation."""
+    """Recommendation results, each with its own grounded explanation."""
 
     query: str
     count: int
     recommendations: list[RecommendationResponse]
-    explanation: str
 
 
 class HealthResponse(BaseModel):
-    """Minimal response for deployment health checks."""
+    """Response for deployment health checks."""
 
     status: str
+    index_loaded: bool
+    db_connected: bool

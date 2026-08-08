@@ -4,12 +4,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.v1.router import router as api_v1_router
+from backend.app.core.config import get_settings
 
+
+settings = get_settings()
 
 app = FastAPI(title="AI Beauty Advisor")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -7,7 +7,7 @@ from backend.app.schemas import (
     SearchRequest,
     SearchResponse,
 )
-from backend.app.services.explanation import generate_explanation
+from backend.app.services.explanation import generate_explanations
 from backend.app.services.recommendation import get_recommendations
 
 
@@ -50,13 +50,16 @@ def recommend(request: SearchRequest) -> SearchResponse:
         ) from error
 
     result_models = [_to_response(item) for item in recommendations]
-    explanation = generate_explanation(
+    explanations = generate_explanations(
         request.query,
         [result.model_dump() for result in result_models],
     )
+    result_models = [
+        result.model_copy(update={"explanation": explanations.get(result.product_id)})
+        for result in result_models
+    ]
     return SearchResponse(
         query=request.query,
         count=len(result_models),
         recommendations=result_models,
-        explanation=explanation,
     )
