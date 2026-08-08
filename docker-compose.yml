@@ -1,0 +1,31 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      # SQLite DB and the persisted FAISS index are build artifacts of the
+      # offline ingestion pipeline, not baked into the image (spec section 6).
+      - ./data:/app/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Vite inlines this into the static bundle at build time, so it has
+        # to be a build arg rather than a runtime environment variable.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+    ports:
+      # Host port matches CORS_ALLOWED_ORIGINS=["http://localhost:5173"] in
+      # .env.example so no extra configuration is needed out of the box.
+      - "5173:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
